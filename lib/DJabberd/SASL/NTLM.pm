@@ -8,7 +8,7 @@ use IO::Select;
 use Carp;
 use Symbol qw(gensym);
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 
 sub manager_class { 'DJabberd::SASL::NTLMManager' }
 
