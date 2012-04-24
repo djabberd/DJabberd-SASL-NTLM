@@ -6,6 +6,7 @@ use base qw/DJabberd::SASL/;
 use IPC::Open3;
 use IO::Select;
 use Carp;
+use Symbol qw(gensym);
 
 our $VERSION = '0.03';
 
@@ -22,12 +23,12 @@ sub set_config_ntlmauthhelper {
     my ( $ntlmauthhelper, @params ) = split( /\s+/, $val );
     croak "Invalid NTLM helper: $ntlmauthhelper"
       unless ( -f $ntlmauthhelper && -x $ntlmauthhelper );
-    $self->{err} = 1;    # set STDERR for child
+    $self->{err} = gensym;    # set STDERR for child
     $self->{pid} =
-      open3( $self->{out}, $self->{in}, $self->{err}, $ntlmauthhelper,
+      open3( $self->{in}, $self->{out}, $self->{err}, $ntlmauthhelper,
         @params );
     $self->{s} = IO::Select->new();
-    $self->{s}->add( $self->{in} );
+    $self->{s}->add( $self->{out} );
     $self->{helper} = $ntlmauthhelper;
     $self->{params} = [@params];
 

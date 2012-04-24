@@ -5,6 +5,10 @@ use warnings;
 use MIME::Base64 qw/encode_base64 decode_base64/;
 use POSIX ":sys_wait_h";
 use Carp;
+use IPC::Open3;
+use IO::Select;
+use Symbol qw(gensym);
+
 our $logger = DJabberd::Log->get_logger();
 
 sub new {
@@ -49,15 +53,16 @@ sub server_step {
     if ( $self->{state} eq "start" ) {
         $self->{state} = "challenge";
         $response = encode_base64( $response, '' );
-        print $out "YR $response\n";
+        syswrite $in, "YR $response\n";
         if ( $s->can_read(2) ) {
-            unless ( sysread $in, $data, 16 ) {
+            unless ( sysread $out, $data, 4096 ) {
+                $logger->warn("can't read ntlm_auth response");
                 &$cb(undef);
                 return;
             }
             $reply = $data;
             while ( $s->can_read(0) ) {
-                last unless ( sysread $in, $data, 16 );
+                last unless ( sysread $out, $data, 4096 );
                 $reply .= $data;
             }
         }
@@ -81,15 +86,16 @@ sub server_step {
     }
     elsif ( $self->{state} eq "challenge" ) {
         $response = encode_base64( $response, '' );
-        print $out "KK $response\n";
+        syswrite $in, "KK $response\n";
         if ( $s->can_read(2) ) {
-            unless ( sysread $in, $data, 16 ) {
+            unless ( sysread $out, $data, 4096 ) {
+                $logger->warn("can't read ntlm_auth response");
                 &$cb;
                 return;
             }
             $reply = $data;
             while ( $s->can_read(0) ) {
-                last unless ( sysread $in, $data, 16 );
+                last unless ( sysread $out, $data, 4096 );
                 $reply .= $data;
             }
         }
@@ -119,22 +125,18 @@ sub server_step {
 sub rip_child {
     my $plugin = shift;
 
-    #close $plugin->{in};
-    #close $plugin->{out};
     kill 15, $plugin->{pid};
 }
 
 sub invoke_ntlm_auth {
-    use IPC::Open3;
-    use IO::Select;
-
     my $plugin = shift;
-    $plugin->{err} = 1;
+
+    $plugin->{err} = gensym;
     $plugin->{pid} =
-      open3( $plugin->{out}, $plugin->{in}, $plugin->{err}, $plugin->{helper},
+      open3( $plugin->{in}, $plugin->{out}, $plugin->{err}, $plugin->{helper},
         @{ $plugin->{params} } );
     $plugin->{s} = IO::Select->new();
-    $plugin->{s}->add( $plugin->{in} );
+    $plugin->{s}->add( $plugin->{out} );
 
     croak "Can't open bidirectional pipe to NTLM helper"
       unless ( $plugin->{pid} );
